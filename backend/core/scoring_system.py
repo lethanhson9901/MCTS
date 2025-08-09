@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from config import AgentWeights, EVALUATION_CRITERIA
+from backend.config import AgentWeights, EVALUATION_CRITERIA
 
 logger = logging.getLogger(__name__)
 
@@ -496,7 +496,7 @@ def calculate_improvement_rate(previous_score: CompositeScore, current_score: Co
 def test_scoring_system():
     """Test scoring system functionality"""
     
-    from config import DEFAULT_CONFIG
+    from backend.config import DEFAULT_CONFIG
     
     logger.info("Testing Scoring System...")
     

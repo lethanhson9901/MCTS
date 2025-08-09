@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 
-from core.llm_client import LLMClient, LLMMessage, LLMResponse, PromptLoader
-from config import MCTSConfig
+from backend.core.llm_client import LLMClient, LLMMessage, LLMResponse, PromptLoader
+from backend.config import MCTSConfig
 
 logger = logging.getLogger(__name__)
 

@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from core.llm_client import LLMClient, LLMMessage, LLMResponse
-from core.mcts_orchestrator import MCTSOrchestrator, MCTSSession
-from config import MCTSConfig, DEFAULT_CONFIG
+from backend.core.llm_client import LLMClient, LLMMessage, LLMResponse
+from backend.core.mcts_orchestrator import MCTSOrchestrator, MCTSSession
+from backend.config import MCTSConfig, DEFAULT_CONFIG
 
 logger = logging.getLogger(__name__)
 

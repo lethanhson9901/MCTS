@@ -16,9 +16,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.markdown import Markdown
 
-from config import MCTSConfig, DEFAULT_CONFIG
-from core.mcts_orchestrator import MCTSOrchestrator
-from core.llm_client import test_llm_connection
+from backend.config import MCTSConfig, DEFAULT_CONFIG
+from backend.core.mcts_orchestrator import MCTSOrchestrator
+from backend.core.llm_client import test_llm_connection
 
 # Async click wrapper
 def coro(f):
@@ -89,7 +89,7 @@ async def quick(message):
         return
     
     try:
-        from core.dynamic_processor import process_user_message
+        from backend.core.dynamic_processor import process_user_message
         
         console.print(f"⚡ Quick processing: {message}", style="yellow")
         
@@ -340,7 +340,7 @@ async def chat():
     """
     
     try:
-        from core.dynamic_processor import start_interactive_session
+        from backend.core.dynamic_processor import start_interactive_session
         await start_interactive_session()
         
     except Exception as e:
@@ -363,7 +363,7 @@ async def ask(message, config):
     """
     
     try:
-        from core.dynamic_processor import process_user_message
+        from backend.core.dynamic_processor import process_user_message
         
         # Load config
         mcts_config = load_config(config)
@@ -539,7 +539,7 @@ async def pipeline(prompt, analysis_loops, idea_loops, config, no_esv, output):
     Ví dụ:
     python main.py pipeline "Phân tích thị trường fintech VN và tạo ý tưởng" --analysis-loops 2 --idea-loops 3
     """
-    from core.reporting import generate_full_report_md
+    from backend.core.reporting import generate_full_report_md
 
     # Load và tùy biến config
     cfg = load_config(config)

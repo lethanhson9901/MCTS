@@ -9,7 +9,7 @@ import aiohttp
 import logging
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
-from config import LLMConfig
+from backend.config import LLMConfig
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -237,7 +237,7 @@ class PromptLoader:
     Utility class để load và quản lý prompts từ files
     """
     
-    def __init__(self, prompts_dir: str = "prompts"):
+    def __init__(self, prompts_dir: str = "backend/prompts"):
         self.prompts_dir = prompts_dir
         self._cache: Dict[str, str] = {}
     
@@ -347,7 +347,7 @@ async def test_llm_connection(config: LLMConfig) -> bool:
 
 if __name__ == "__main__":
     # Example usage
-    from config import DEFAULT_CONFIG
+    from backend.config import DEFAULT_CONFIG
     
     async def main():
         # Test connection

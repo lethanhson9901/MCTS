@@ -62,6 +62,28 @@ graph TD
     H --> B
 ```
 
+## ✨ Các Cải tiến Mới trong v2.0
+
+### 🎨 Đa dạng hóa Ý tưởng Thông minh
+- **Phân tích đa dạng tự động**: Hệ thống tự động đo lường độ trùng lặp giữa các ý tưởng theo audience, business model, và công nghệ
+- **Điều chỉnh nhiệt độ sáng tạo**: Primary Agent sử dụng annealing temperature để tăng đa dạng ban đầu và hội tụ dần
+- **Chống trùng lặp thông minh**: Phát hiện và tránh các ý tưởng giống nhau không cần thiết
+
+### 🧠 Hệ thống Phản hồi Thông minh
+- **Hướng dẫn vòng sau**: Synthesis Agent tạo hướng dẫn cụ thể cho các agent trong vòng tiếp theo
+- **Context truyền tải**: Kết quả phân tích đa dạng được truyền cho tất cả agents để đưa ra quyết định tốt hơn
+- **Phong cách đa dạng**: Primary Agent có thể thay đổi phong cách phát sinh ý tưởng (conservative, bold, disruptive)
+
+### 🔍 Đánh giá Tính Mới (Novelty)
+- **Kiểm tra tự động**: Sử dụng ESV Module để đánh giá độ mới của ý tưởng qua search results
+- **Novelty scoring**: Tính toán novelty score 0-1 cho từng ý tưởng dựa trên số lượng competitors/similar products
+- **Báo cáo chi tiết**: Thống kê ý tưởng có novelty thấp cần cải thiện
+
+### 📊 Báo cáo Nâng cao
+- **Thống kê đa dạng**: Hiển thị số ý tưởng, unique audiences, business models, tech stacks
+- **Phân tích novelty**: Báo cáo average novelty score và ý tưởng cần cải thiện
+- **Dashboard tổng quan**: Markdown report với đầy đủ metrics và insights
+
 ## 🚀 Cài đặt và Sử dụng
 
 ### Yêu cầu hệ thống

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 from .base_agent import BaseAgent, AgentInput, AgentOutput
-from config import MCTSConfig
+from backend.config import MCTSConfig
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +248,7 @@ Bắt đầu phân tích ngay bây giờ:
         
         # Diversity guidance từ orchestrator/SA nếu có
         diversity_guidance = agent_input.context.get("diversity_guidance") or ""
+        style_variant = agent_input.context.get("style_variant") or ""
 
         prompt = f"""
 # NHIỆM VỤ TẠO Ý TƯỞNG STARTUP - VÒNG {task.iteration}
@@ -277,6 +278,9 @@ Dựa trên phân tích trên, hãy tạo ra **{task.target_count} ý tưởng s
 - Competitive analysis cụ thể với tên competitors
  - {diversity_guidance}
  - RÀ SOÁT TRÙNG LẶP: Không lặp lại target audience, business model và tech stack giữa các ý tưởng trừ khi có lý do rõ ràng. Gắn nhãn [UNIQUE] cho điểm khác biệt chính của từng ý tưởng.
+
+## PHONG CÁCH TRIỂN KHAI (VARIANT)
+{style_variant if style_variant else "Không có yêu cầu phong cách riêng. Tạo danh mục ý tưởng cân bằng giữa kỹ thuật và thị trường."}
 
 ## NGỮ CẢNH BỔ SUNG
 {json.dumps(agent_input.context, ensure_ascii=False, indent=2) if agent_input.context else "Không có ngữ cảnh bổ sung"}

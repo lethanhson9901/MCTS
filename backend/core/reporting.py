@@ -5,7 +5,7 @@ Reporting helpers để tạo báo cáo Markdown chi tiết cho session MCTS
 """
 
 from typing import Any, Dict, List, Optional
-from core.mcts_orchestrator import MCTSSession
+from backend.core.mcts_orchestrator import MCTSSession
 
 
 def _md_heading(text: str, level: int = 2) -> str:
@@ -98,6 +98,25 @@ def _format_quality_metrics(session: MCTSSession) -> str:
         parts.append(_md_kv("Cải thiện", f"{ideas.get('improvement', 0):.2f}"))
         parts.append(_md_kv("Điểm trung bình", f"{ideas.get('average_score', 0):.2f}/10"))
     parts.append("\n")
+    # Diversity & Novelty (nếu có)
+    ideas_block = session.final_deliverables.get("ideas_results", {}) if session.final_deliverables else {}
+    diversity = ideas_block.get("diversity_analysis") or {}
+    novelty = ideas_block.get("novelty") or {}
+    if diversity or novelty:
+        parts.append(_md_heading("Đa dạng & Tính mới của Ý tưởng", 3))
+        if diversity:
+            parts.append(_md_kv("Số ý tưởng", diversity.get("ideas_count", 0)))
+            parts.append(_md_kv("Diversity Score", diversity.get("diversity_score", 0.0)))
+            parts.append(_md_kv("Unique Audiences", diversity.get("unique_audiences", 0)))
+            parts.append(_md_kv("Unique Business Models", diversity.get("unique_business_models", 0)))
+            parts.append(_md_kv("Unique Techs", diversity.get("unique_techs", 0)))
+        if novelty:
+            summary = novelty.get("summary", {})
+            parts.append(_md_kv("Avg Novelty", summary.get("avg_novelty", 0.0)))
+            low_list = summary.get("low_novelty_ideas", [])
+            if low_list:
+                parts.append(_md_kv("Ý tưởng cần cải thiện novelty", ", ".join(low_list[:5])))
+        parts.append("\n")
     return "".join(parts)
 
 

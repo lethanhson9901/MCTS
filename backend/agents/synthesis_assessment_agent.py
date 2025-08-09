@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from .base_agent import BaseAgent, AgentInput, AgentOutput
-from config import MCTSConfig, AgentWeights, EVALUATION_CRITERIA
+from backend.config import MCTSConfig, AgentWeights, EVALUATION_CRITERIA
 
 logger = logging.getLogger(__name__)
 

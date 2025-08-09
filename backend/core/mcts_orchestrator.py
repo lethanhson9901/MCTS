@@ -10,15 +10,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from config import MCTSConfig, DEFAULT_CONFIG
-from core.llm_client import LLMClient
-from core.esv_module import ESVModule, create_search_query
-from core.scoring_system import ScoringSystem, ScoreType, CompositeScore, create_scores_from_text
-from agents.base_agent import AgentOrchestrator, create_agent_input
-from agents.primary_agent import PrimaryAgent, AnalysisTask, IdeaGenerationTask
-from agents.critical_thinking_agent import CriticalThinkingAgent, CriticalAnalysisTask
-from agents.adversarial_expert_agent import AdversarialExpertAgent, AdversarialAttackTask, AdversarialRole, get_role_from_string
-from agents.synthesis_assessment_agent import SynthesisAssessmentAgent, SynthesisTask
+from backend.config import MCTSConfig, DEFAULT_CONFIG
+from backend.core.llm_client import LLMClient
+from backend.core.esv_module import ESVModule, create_search_query
+from backend.core.scoring_system import ScoringSystem, ScoreType, CompositeScore, create_scores_from_text
+from backend.agents.base_agent import AgentOrchestrator, create_agent_input
+from backend.agents.primary_agent import PrimaryAgent, AnalysisTask, IdeaGenerationTask
+from backend.agents.critical_thinking_agent import CriticalThinkingAgent, CriticalAnalysisTask
+from backend.agents.adversarial_expert_agent import AdversarialExpertAgent, AdversarialAttackTask, AdversarialRole, get_role_from_string
+from backend.agents.synthesis_assessment_agent import SynthesisAssessmentAgent, SynthesisTask
 
 logger = logging.getLogger(__name__)
 
@@ -440,6 +440,16 @@ class MCTSOrchestrator:
         idea_diversity = self._analyze_idea_diversity(primary_output.content)
         self._last_idea_diversity = idea_diversity
 
+        # Đánh giá novelty dựa trên ESV cho từng ý tưởng (nếu ESV bật)
+        idea_novelty = None
+        if self.esv_module and idea_diversity.get("idea_names"):
+            try:
+                idea_novelty = await self._evaluate_idea_novelty(idea_diversity.get("idea_names", []))
+                self._last_idea_novelty = idea_novelty
+            except Exception as _e:
+                logger.warning(f"Idea novelty evaluation failed: {_e}")
+                self._last_idea_novelty = {}
+
         # Step 2: Critical Thinking Analysis
         ct_task = CriticalAnalysisTask(
             content_to_analyze=primary_output.content,
@@ -450,7 +460,10 @@ class MCTSOrchestrator:
         
         ct_input = create_agent_input(
             data=ct_task,
-            context={"idea_diversity_analysis": idea_diversity},
+            context={
+                "idea_diversity_analysis": idea_diversity,
+                "idea_novelty": idea_novelty or {}
+            },
             iteration=iteration
         )
         ct_output = await self.ct_agent.process(ct_input)
@@ -469,7 +482,10 @@ class MCTSOrchestrator:
         
         ae_input = create_agent_input(
             data=ae_task,
-            context={"idea_diversity_analysis": idea_diversity},
+            context={
+                "idea_diversity_analysis": idea_diversity,
+                "idea_novelty": idea_novelty or {}
+            },
             iteration=iteration
         )
         ae_output = await self.ae_agent.process(ae_input)
@@ -495,6 +511,7 @@ class MCTSOrchestrator:
                 "max_loops": self.config.max_idea_loops,
                 "phase": "ideas",
                 "idea_diversity_analysis": idea_diversity,
+                "idea_novelty": idea_novelty or {},
                 "sa_prev_instructions": self._next_instructions_ideas or {}
             },
             iteration=iteration
@@ -540,7 +557,7 @@ class MCTSOrchestrator:
         
         try:
             # Extract key concepts cho validation
-            from core.esv_module import extract_keywords_from_text
+            from backend.core.esv_module import extract_keywords_from_text
             keywords = extract_keywords_from_text(content, max_keywords=3)
             
             # Create search queries based on content type
@@ -733,6 +750,40 @@ class MCTSOrchestrator:
         except Exception as e:
             logger.warning(f"Diversity analysis failed: {str(e)}")
             return {"ideas_count": 0, "diversity_score": 0.0, "error": str(e)}
+
+    async def _evaluate_idea_novelty(self, idea_names: List[str]) -> Dict[str, Any]:
+        """Đánh giá tính mới (novelty) bằng ESV: kiểm tra nhanh sự hiện diện/độ phổ biến.
+
+        Trả về mapping tên ý tưởng -> {presence, confidence, summary} và tổng hợp thống kê.
+        """
+        if not self.esv_module or not idea_names:
+            return {}
+        from backend.core.esv_module import create_search_query
+        queries = []
+        for name in idea_names[:5]:  # giới hạn để nhẹ nhàng
+            queries.append(create_search_query(f"startup '{name}' product", "competitor", "medium", max_results=5))
+            queries.append(create_search_query(f"'{name}' SaaS", "competitor", "low", max_results=5))
+        results = await self.esv_module.validate_multiple(queries)
+
+        # Tính sơ bộ: nếu tìm thấy nhiều kết quả liên quan trực tiếp, coi như novelty thấp hơn
+        novelty = {"by_idea": {}, "summary": {}}
+        for name in idea_names:
+            related = [r for q, v in results.items() for r in v.results if name.lower() in (r.title or "").lower() or name.lower() in (r.snippet or "").lower()]
+            count = len(related)
+            avg_conf = sum(r.confidence for r in related) / count if count else 0.0
+            novelty_score = max(0.0, 1.0 - min(count, 5) / 5.0)  # nhiều hit hơn => novelty giảm
+            novelty["by_idea"][name] = {
+                "hits": count,
+                "avg_confidence": round(avg_conf, 2),
+                "novelty_score": round(novelty_score, 2)
+            }
+        # summary
+        all_scores = [d["novelty_score"] for d in novelty["by_idea"].values()]
+        novelty["summary"] = {
+            "avg_novelty": round(sum(all_scores) / len(all_scores), 2) if all_scores else 0.0,
+            "low_novelty_ideas": [name for name, d in novelty["by_idea"].items() if d["novelty_score"] < 0.5]
+        }
+        return novelty
     
     async def _handle_user_checkpoint(self, loop_result: Dict[str, Any]) -> Dict[str, str]:
         """Handle user checkpoint interaction"""
@@ -789,7 +840,8 @@ class MCTSOrchestrator:
             "ideas_results": {
                 "final_ideas": self.session.ideas_results,
                 "iteration_count": self.session.ideas_iteration,
-                "diversity_analysis": self._last_idea_diversity or {}
+                "diversity_analysis": self._last_idea_diversity or {},
+                "novelty": getattr(self, '_last_idea_novelty', {}) or {}
             },
             "quality_metrics": self._compile_quality_metrics(),
             "agent_performance": self._compile_agent_performance(),

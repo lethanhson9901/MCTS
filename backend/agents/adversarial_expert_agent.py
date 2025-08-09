@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .base_agent import BaseAgent, AgentInput, AgentOutput
-from config import MCTSConfig, ADVERSARIAL_ROLE_MAPPING
+from backend.config import MCTSConfig, ADVERSARIAL_ROLE_MAPPING
 
 logger = logging.getLogger(__name__)
 

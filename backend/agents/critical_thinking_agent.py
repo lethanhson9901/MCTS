@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 
 from .base_agent import BaseAgent, AgentInput, AgentOutput
-from config import MCTSConfig, EVALUATION_CRITERIA
+from backend.config import MCTSConfig, EVALUATION_CRITERIA
 
 logger = logging.getLogger(__name__)
 
