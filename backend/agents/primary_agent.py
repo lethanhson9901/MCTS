@@ -115,13 +115,17 @@ class PrimaryAgent(BaseAgent):
         task: IdeaGenerationTask = agent_input.data
         self.current_phase = "idea_generation"
         
+        # Adaptive temperature (annealing) theo vòng lặp để tăng đa dạng ban đầu và hội tụ dần
+        base_temp = 0.85
+        anneal = max(0.4, base_temp - 0.08 * (task.iteration - 1))
+
         # Tạo prompt cho việc tạo ý tưởng
         idea_prompt = self._build_idea_generation_prompt(task, agent_input)
         
         # Gọi LLM với temperature cao hơn cho creativity
         llm_response = await self._make_llm_call(
             user_message=idea_prompt,
-            temperature=0.8,  # Cao hơn để khuyến khích sáng tạo
+            temperature=anneal,  # Cao hơn lúc đầu, giảm dần để hội tụ
             use_conversation_history=task.iteration > 1
         )
         
@@ -242,6 +246,9 @@ Bắt đầu phân tích ngay bây giờ:
 **Yêu cầu:** Hãy giải quyết tất cả các thách thức và cải thiện ý tưởng dựa trên phản hồi trên.
 """
         
+        # Diversity guidance từ orchestrator/SA nếu có
+        diversity_guidance = agent_input.context.get("diversity_guidance") or ""
+
         prompt = f"""
 # NHIỆM VỤ TẠO Ý TƯỞNG STARTUP - VÒNG {task.iteration}
 
@@ -268,6 +275,8 @@ Dựa trên phân tích trên, hãy tạo ra **{task.target_count} ý tưởng s
 - Ước tính đầu tư và timeline realistic  
 - Phân tích rủi ro và mitigation strategies
 - Competitive analysis cụ thể với tên competitors
+ - {diversity_guidance}
+ - RÀ SOÁT TRÙNG LẶP: Không lặp lại target audience, business model và tech stack giữa các ý tưởng trừ khi có lý do rõ ràng. Gắn nhãn [UNIQUE] cho điểm khác biệt chính của từng ý tưởng.
 
 ## NGỮ CẢNH BỔ SUNG
 {json.dumps(agent_input.context, ensure_ascii=False, indent=2) if agent_input.context else "Không có ngữ cảnh bổ sung"}

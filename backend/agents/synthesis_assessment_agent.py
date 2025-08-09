@@ -182,6 +182,21 @@ class SynthesisAssessmentAgent(BaseAgent):
         
         # Build decision logic
         decision_logic = self._build_decision_logic_section()
+
+        # Diversity analysis (nếu có)
+        diversity_context = ""
+        idea_diversity = agent_input.context.get("idea_diversity_analysis")
+        if idea_diversity:
+            diversity_context = f"""
+## DIVERSITY CONTEXT (Ý tưởng)
+
+- Ideas: {idea_diversity.get('ideas_count')}
+- Diversity Score: {idea_diversity.get('diversity_score')}
+- Unique Audiences: {idea_diversity.get('unique_audiences')}
+- Unique Business Models: {idea_diversity.get('unique_business_models')}
+- Unique Techs: {idea_diversity.get('unique_techs')}
+- Duplicates: {len(idea_diversity.get('duplicates', []))}
+"""
         
         prompt = f"""
 # NHIỆM VỤ TỔNG HỢP & ĐÁNH GIÁ - VÒNG {task.iteration}
@@ -193,6 +208,8 @@ class SynthesisAssessmentAgent(BaseAgent):
 {input_analysis}
 
 {esv_section}
+
+{diversity_context}
 
 ## FRAMEWORK ĐIỂM SỐ
 
@@ -573,7 +590,8 @@ Red_Flag = ANY individual score < {self.red_flag_threshold}
             "primary_llm": {
                 "priority_actions": [],
                 "specific_improvements": [],
-                "questions_to_address": []
+                "questions_to_address": [],
+                "diversity_actions": []
             },
             "ct_llm": {
                 "focus_areas": [],
@@ -608,6 +626,20 @@ Red_Flag = ANY individual score < {self.red_flag_threshold}
             instructions["primary_llm"]["priority_actions"].append(
                 f"URGENT: Address {red_flag.criterion} (score: {red_flag.raw_score})"
             )
+
+        # Nếu ở phase ideas, thêm chỉ dẫn đa dạng hóa dựa trên diversity score
+        if task.phase == "ideas":
+            diversity = agent_input.context.get("idea_diversity_analysis", {})
+            div_score = float(diversity.get("diversity_score", 1.0))
+            duplicates = diversity.get("duplicates", [])
+            if div_score < 0.7:
+                instructions["primary_llm"]["diversity_actions"].append(
+                    "Tạo thêm 2 ý tưởng khác biệt rõ rệt về khách hàng mục tiêu hoặc mô hình kinh doanh."
+                )
+            if duplicates:
+                instructions["primary_llm"]["diversity_actions"].append(
+                    f"Tách/gộp hoặc chỉnh sửa các cặp ý tưởng trùng lặp: {duplicates[:3]}"
+                )
         
         return instructions
     

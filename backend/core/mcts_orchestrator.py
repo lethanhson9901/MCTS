@@ -75,6 +75,11 @@ class MCTSOrchestrator:
         self.ct_agent: Optional[CriticalThinkingAgent] = None
         self.ae_agent: Optional[AdversarialExpertAgent] = None
         self.sa_agent: Optional[SynthesisAssessmentAgent] = None
+
+        # Loop guidance/state
+        self._next_instructions_analysis: Optional[Dict[str, Any]] = None
+        self._next_instructions_ideas: Optional[Dict[str, Any]] = None
+        self._last_idea_diversity: Optional[Dict[str, Any]] = None
         
     async def __aenter__(self):
         """Async context manager entry"""
@@ -247,7 +252,10 @@ class MCTSOrchestrator:
         
         primary_input = create_agent_input(
             data=analysis_task,
-            context={"max_loops": self.config.max_analysis_loops},
+            context={
+                "max_loops": self.config.max_analysis_loops,
+                "sa_next_instructions": self._next_instructions_analysis or {}
+            },
             iteration=iteration
         )
         
@@ -300,7 +308,11 @@ class MCTSOrchestrator:
         
         sa_input = create_agent_input(
             data=synthesis_task,
-            context={"max_loops": self.config.max_analysis_loops},
+            context={
+                "max_loops": self.config.max_analysis_loops,
+                "phase": "analysis",
+                "sa_prev_instructions": self._next_instructions_analysis or {}
+            },
             iteration=iteration
         )
         
@@ -312,9 +324,13 @@ class MCTSOrchestrator:
         # Extract scores và decision
         scores_data = create_scores_from_text(sa_output.content, ScoreType.ANALYSIS, self.config.weights)
         composite_score = self.scoring_system.calculate_score(scores_data, ScoreType.ANALYSIS)
-        
-        # Extract decision from SA output
-        decision = self._extract_decision_from_sa_output(sa_output.content)
+
+        # Prefer structured decision from SA metadata if available
+        sa_metadata = sa_output.metadata or {}
+        loop_decision_md = sa_metadata.get("loop_decision") or {}
+        decision = loop_decision_md.get("action") or self._extract_decision_from_sa_output(sa_output.content)
+        # Persist next round instructions for subsequent analysis loop
+        self._next_instructions_analysis = loop_decision_md.get("next_round_instructions")
         
         return {
             "primary_output": primary_output.content,
@@ -407,7 +423,11 @@ class MCTSOrchestrator:
         
         primary_input = create_agent_input(
             data=ideas_task,
-            context={"max_loops": self.config.max_idea_loops},
+            context={
+                "max_loops": self.config.max_idea_loops,
+                "sa_next_instructions": self._next_instructions_ideas or {},
+                "diversity_guidance": "Tạo các ý tưởng khác biệt rõ rệt về đối tượng khách hàng, mô hình kinh doanh và công nghệ; tránh trùng lặp."
+            },
             iteration=iteration
         )
         
@@ -416,6 +436,10 @@ class MCTSOrchestrator:
         if not primary_output.success:
             raise Exception(f"Primary agent failed: {primary_output.error}")
         
+        # Phân tích đa dạng ý tưởng để cung cấp ngữ cảnh cho các agent khác
+        idea_diversity = self._analyze_idea_diversity(primary_output.content)
+        self._last_idea_diversity = idea_diversity
+
         # Step 2: Critical Thinking Analysis
         ct_task = CriticalAnalysisTask(
             content_to_analyze=primary_output.content,
@@ -424,7 +448,11 @@ class MCTSOrchestrator:
             iteration=iteration
         )
         
-        ct_input = create_agent_input(data=ct_task, iteration=iteration)
+        ct_input = create_agent_input(
+            data=ct_task,
+            context={"idea_diversity_analysis": idea_diversity},
+            iteration=iteration
+        )
         ct_output = await self.ct_agent.process(ct_input)
         
         # Step 3: Adversarial Expert Attack
@@ -439,7 +467,11 @@ class MCTSOrchestrator:
             iteration=iteration
         )
         
-        ae_input = create_agent_input(data=ae_task, iteration=iteration)
+        ae_input = create_agent_input(
+            data=ae_task,
+            context={"idea_diversity_analysis": idea_diversity},
+            iteration=iteration
+        )
         ae_output = await self.ae_agent.process(ae_input)
         
         # Step 4: ESV Validation (if enabled)
@@ -459,7 +491,12 @@ class MCTSOrchestrator:
         
         sa_input = create_agent_input(
             data=synthesis_task,
-            context={"max_loops": self.config.max_idea_loops},
+            context={
+                "max_loops": self.config.max_idea_loops,
+                "phase": "ideas",
+                "idea_diversity_analysis": idea_diversity,
+                "sa_prev_instructions": self._next_instructions_ideas or {}
+            },
             iteration=iteration
         )
         
@@ -471,9 +508,13 @@ class MCTSOrchestrator:
         # Extract scores và decision
         scores_data = create_scores_from_text(sa_output.content, ScoreType.IDEAS, self.config.weights)
         composite_score = self.scoring_system.calculate_score(scores_data, ScoreType.IDEAS)
-        
-        # Extract decision from SA output
-        decision = self._extract_decision_from_sa_output(sa_output.content)
+
+        # Prefer structured decision from SA metadata if available
+        sa_metadata = sa_output.metadata or {}
+        loop_decision_md = sa_metadata.get("loop_decision") or {}
+        decision = loop_decision_md.get("action") or self._extract_decision_from_sa_output(sa_output.content)
+        # Persist next round instructions for subsequent ideas loop
+        self._next_instructions_ideas = loop_decision_md.get("next_round_instructions")
         
         return {
             "primary_output": primary_output.content,
@@ -580,6 +621,118 @@ class MCTSOrchestrator:
             return "user_checkpoint"
         else:
             return "continue"
+
+    def _analyze_idea_diversity(self, ideas_markdown: str) -> Dict[str, Any]:
+        """Phân tích đa dạng ý tưởng từ markdown output của Primary Agent.
+
+        Trả về các thống kê: số ý tưởng, số nhóm audience khác nhau, số mô hình kinh doanh,
+        số công nghệ khác nhau, tỉ lệ trùng lặp tên/keyword, và gợi ý cải thiện.
+        """
+        try:
+            import re
+            from collections import Counter
+
+            # Tách các ý tưởng theo các heading phổ biến
+            idea_chunks = re.split(r"\n\s*####?\s*\d+\.|\n\s*##\s*\d+\.|\n\s*##\s+Tên|\n\s*###\s+TÊN", ideas_markdown)
+            idea_chunks = [c.strip() for c in idea_chunks if len(c.strip()) > 30]
+
+            def extract_field(patterns, text):
+                for p in patterns:
+                    m = re.search(p, text, re.IGNORECASE)
+                    if m:
+                        return m.group(1).strip()[:300]
+                return ""
+
+            audience_patterns = [r"Target\s*Market\s*:\s*(.*?)(?:\n\*\*|\n#|$)", r"Target\s*Audience\s*:\s*(.*?)(?:\n\*\*|\n#|$)"]
+            bm_patterns = [r"Mô hình\s*Kinh\s*doanh\s*:\s*(.*?)(?:\n\*\*|\n#|$)", r"Business\s*Model\s*:\s*(.*?)(?:\n\*\*|\n#|$)"]
+            tech_patterns = [r"Giải pháp\s*đề\s*xuất\s*:\s*(.*?)(?:\n\*\*|\n#|$)", r"Solution\s*:\s*(.*?)(?:\n\*\*|\n#|$)"]
+            name_patterns = [r"^\s*\*\*?Tên\s*ý\s*tưởng\s*:?\s*\*\*(.*)\*\*", r"^\s*####?\s*\d+\.\s*(.*)$", r"^\s*##\s*(.*)$"]
+
+            def extract_name(text):
+                lines = text.splitlines()
+                for line in lines[:4]:
+                    for p in name_patterns:
+                        m = re.search(p, line.strip(), re.IGNORECASE)
+                        if m:
+                            return re.sub(r"[#*]", "", m.group(1)).strip()[:120]
+                # fallback: first non-empty line
+                for line in lines:
+                    if line.strip():
+                        return line.strip()[:120]
+                return "Idea"
+
+            names = []
+            audiences = []
+            bms = []
+            techs = []
+
+            for chunk in idea_chunks:
+                names.append(extract_name(chunk))
+                audiences.append(extract_field(audience_patterns, chunk))
+                bms.append(extract_field(bm_patterns, chunk))
+                techs.append(extract_field(tech_patterns, chunk))
+
+            def tokenize(s):
+                tokens = re.findall(r"[a-zA-Z0-9]+", s.lower())
+                return set(t for t in tokens if len(t) > 2)
+
+            # Tính trùng lặp giữa ý tưởng dựa trên Jaccard
+            def jaccard(a, b):
+                if not a or not b:
+                    return 0.0
+                inter = len(a & b)
+                union = len(a | b) or 1
+                return inter / union
+
+            name_tokens = [tokenize(n) for n in names]
+            bm_tokens = [tokenize(x) for x in bms]
+            audience_tokens = [tokenize(x) for x in audiences]
+            tech_tokens = [tokenize(x) for x in techs]
+
+            n = len(idea_chunks)
+            if n <= 1:
+                return {"ideas_count": n, "diversity_score": 0.0, "duplicates": [], "insights": []}
+
+            sims = []
+            for i in range(n):
+                for j in range(i + 1, n):
+                    sim = 0.4 * jaccard(name_tokens[i], name_tokens[j]) 
+                    sim += 0.2 * jaccard(bm_tokens[i], bm_tokens[j])
+                    sim += 0.2 * jaccard(audience_tokens[i], audience_tokens[j])
+                    sim += 0.2 * jaccard(tech_tokens[i], tech_tokens[j])
+                    sims.append(((i, j), sim))
+
+            # Diversity score = 1 - average similarity
+            avg_sim = sum(s for (_, s) in sims) / max(len(sims), 1)
+            diversity_score = max(0.0, 1.0 - avg_sim)
+
+            # Phát hiện cặp trùng lặp mạnh
+            duplicate_pairs = [(i, j, round(s, 3)) for ((i, j), s) in sims if s >= 0.55]
+
+            # Thống kê duy nhất
+            def unique_nonempty(arr):
+                return len({x.strip().lower() for x in arr if x and x.strip()})
+
+            stats = {
+                "ideas_count": n,
+                "unique_audiences": unique_nonempty(audiences),
+                "unique_business_models": unique_nonempty(bms),
+                "unique_techs": unique_nonempty(techs),
+                "diversity_score": round(diversity_score, 3),
+                "duplicates": duplicate_pairs,
+                "idea_names": names[:n]
+            }
+
+            insights = []
+            if diversity_score < 0.65:
+                insights.append("Đa dạng ý tưởng thấp; cần thay đổi đối tượng khách hàng, mô hình kinh doanh hoặc công nghệ cho một số ý tưởng.")
+            if duplicate_pairs:
+                insights.append(f"Có {len(duplicate_pairs)} cặp ý tưởng tương tự; cân nhắc gộp hoặc thay đổi khác biệt rõ rệt.")
+            stats["insights"] = insights
+            return stats
+        except Exception as e:
+            logger.warning(f"Diversity analysis failed: {str(e)}")
+            return {"ideas_count": 0, "diversity_score": 0.0, "error": str(e)}
     
     async def _handle_user_checkpoint(self, loop_result: Dict[str, Any]) -> Dict[str, str]:
         """Handle user checkpoint interaction"""
@@ -635,7 +788,8 @@ class MCTSOrchestrator:
             },
             "ideas_results": {
                 "final_ideas": self.session.ideas_results,
-                "iteration_count": self.session.ideas_iteration
+                "iteration_count": self.session.ideas_iteration,
+                "diversity_analysis": self._last_idea_diversity or {}
             },
             "quality_metrics": self._compile_quality_metrics(),
             "agent_performance": self._compile_agent_performance(),
