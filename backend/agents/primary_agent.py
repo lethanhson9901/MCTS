@@ -121,7 +121,7 @@ class PrimaryAgent(BaseAgent):
         # Gọi LLM với temperature cao hơn cho creativity
         llm_response = await self._make_llm_call(
             user_message=idea_prompt,
-            temperature=0.7,  # Cao hơn để khuyến khích sáng tạo
+            temperature=0.8,  # Cao hơn để khuyến khích sáng tạo
             use_conversation_history=task.iteration > 1
         )
         

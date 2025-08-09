@@ -26,7 +26,7 @@ class AgentWeights:
     tiem_nang_thi_truong: float = 2.5
     tinh_sang_tao: float = 1.5
     mo_hinh_kinh_doanh: float = 2.0
-    loi_the_canh_tranh: float = 1.8
+    loi_the_canh_tranh: float = 2.0
     rui_ro_ky_thuat: float = 1.5
     dau_tu_ban_dau: float = 1.2
 
@@ -50,7 +50,7 @@ class MCTSConfig:
     weights: AgentWeights = field(default_factory=AgentWeights)
     
     # Vai trò AE-LLM (ít nhất 2)
-    adversarial_roles: List[str] = field(default_factory=lambda: ["VC", "Kỹ_sư", "Đối_thủ"])
+    adversarial_roles: List[str] = field(default_factory=lambda: ["VC", "Kỹ_sư", "Đối_thủ", "Marketing", "Pháp_lý"])
     
     # Cấu hình ESV
     enable_external_validation: bool = True
