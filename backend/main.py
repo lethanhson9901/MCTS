@@ -24,8 +24,7 @@ from backend.core.llm_client import test_llm_connection
 def coro(f):
     """Decorator to make click commands work with async functions"""
     def wrapper(*args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(f(*args, **kwargs))
+        return asyncio.run(f(*args, **kwargs))
     wrapper.__name__ = f.__name__
     wrapper.__doc__ = f.__doc__
     return wrapper

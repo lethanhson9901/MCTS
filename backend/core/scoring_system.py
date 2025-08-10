@@ -4,12 +4,13 @@ Scoring System - Hệ thống điểm số và Red Flag cho MCTS
 
 import json
 import logging
+import re
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from backend.config import AgentWeights, EVALUATION_CRITERIA
+from backend.config import AgentWeights, EVALUATION_CRITERIA, CRITERIA_NAME_MAPPING
 
 logger = logging.getLogger(__name__)
 
@@ -449,14 +450,13 @@ def create_scores_from_text(text: str, score_type: ScoreType, weights: AgentWeig
     """
     
     import re
-    from backend.config import CRITERIA_NAME_MAPPING
     
     scores = {}
     criteria = EVALUATION_CRITERIA.get(score_type.value, [])
     
     # TRY NEW TABLE FORMAT FIRST
-    # Pattern để tìm bảng markdown với format mới
-    table_pattern = r"\|.*?Tiêu chí.*?Raw Score.*?Weight.*?Weighted.*?Red Flag.*?\n\|.*?---.*?\n(.*?)\|.*?TỔNG.*?\n"
+    # Regex được cải tiến để linh hoạt hơn, không yêu cầu dòng TỔNG/ĐIỂM CUỐI
+    table_pattern = r"\|.*?Tiêu chí.*?Raw Score.*?\n\|.*?---.*?\n(.*?)(?=\n\|?\s*\*\*?(?:TỔNG|ĐIỂM CUỐI)\*\*?|$)"
     table_match = re.search(table_pattern, text, re.DOTALL | re.IGNORECASE)
     
     if table_match:
@@ -478,10 +478,13 @@ def create_scores_from_text(text: str, score_type: ScoreType, weights: AgentWeig
                     if criterion_text_lower in CRITERIA_NAME_MAPPING:
                         field_name = CRITERIA_NAME_MAPPING[criterion_text_lower]
                         try:
-                            score = float(score_text)
-                            if 0.0 <= score <= 10.0:
-                                scores[field_name] = score
-                        except ValueError:
+                            # Lấy số từ score_text (ví dụ: "7.5" từ "7.5 / 10")
+                            score_val_match = re.search(r"(\d+(?:\.\d+)?)", score_text)
+                            if score_val_match:
+                                score = float(score_val_match.group(1))
+                                if 0.0 <= score <= 10.0:
+                                    scores[field_name] = score
+                        except (ValueError, IndexError):
                             continue
                     else:
                         # Fallback to old matching logic
@@ -490,11 +493,13 @@ def create_scores_from_text(text: str, score_type: ScoreType, weights: AgentWeig
                                 criterion.replace("_", " ") in criterion_text_lower or
                                 criterion.replace("_", "") in criterion_text_lower):
                                 try:
-                                    score = float(score_text)
-                                    if 0.0 <= score <= 10.0:
-                                        scores[criterion] = score
-                                        break
-                                except ValueError:
+                                    score_val_match = re.search(r"(\d+(?:\.\d+)?)", score_text)
+                                    if score_val_match:
+                                        score = float(score_val_match.group(1))
+                                        if 0.0 <= score <= 10.0:
+                                            scores[criterion] = score
+                                            break
+                                except (ValueError, IndexError):
                                     continue
     
     # FALLBACK TO OLD PATTERNS if no table found

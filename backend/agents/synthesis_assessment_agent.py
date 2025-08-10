@@ -11,6 +11,7 @@ from datetime import datetime
 
 from .base_agent import BaseAgent, AgentInput, AgentOutput
 from backend.config import MCTSConfig, AgentWeights, EVALUATION_CRITERIA
+from backend.core.scoring_system import create_scores_from_text, ScoreType
 
 logger = logging.getLogger(__name__)
 
@@ -266,20 +267,16 @@ Bắt đầu tổng hợp và đánh giá ngay bây giờ:
 ### 📄 OUTPUT TỪ PRIMARY LLM
 **Độ dài:** {len(task.primary_output)} ký tự
 **Preview:**
-```
 {task.primary_output[:500]}{'...' if len(task.primary_output) > 500 else ''}
-```
 """)
         
         # CT feedback
         if task.ct_feedback:
             sections.append(f"""
-### 🧠 PHẢN HỒI TỪ CT-LLM (Tư duy Phản biện)
+### 🧠 PHẢN HỒI TỪ CT-LLM
 **Độ dài:** {len(task.ct_feedback)} ký tự
 **Preview:**
-```
 {task.ct_feedback[:500]}{'...' if len(task.ct_feedback) > 500 else ''}
-```
 """)
         else:
             sections.append("### 🧠 PHẢN HỒI TỪ CT-LLM: Không có")
@@ -290,9 +287,7 @@ Bắt đầu tổng hợp và đánh giá ngay bây giờ:
 ### ⚔️ PHẢN HỒI TỪ AE-LLM (Chuyên gia Đối kháng)
 **Độ dài:** {len(task.ae_feedback)} ký tự  
 **Preview:**
-```
 {task.ae_feedback[:500]}{'...' if len(task.ae_feedback) > 500 else ''}
-```
 """)
         else:
             sections.append("### ⚔️ PHẢN HỒI TỪ AE-LLM: Không có")
@@ -362,10 +357,8 @@ Bắt đầu tổng hợp và đánh giá ngay bây giờ:
         framework += f"""
 
 ### CÔNG THỨC TÍNH ĐIỂM:
-```
 Weighted_Score = Σ(Individual_Score × Weight) / Σ(Weights)
 Red_Flag = ANY individual score < {self.red_flag_threshold}
-```
 """
         
         return framework
@@ -396,59 +389,52 @@ Red_Flag = ANY individual score < {self.red_flag_threshold}
     async def _parse_quality_scores(self, 
                                   content: str, 
                                   phase: str) -> List[QualityScore]:
-        """Parse quality scores từ LLM output"""
-        
+        """
+        Parse quality scores from LLM output using the centralized robust parser.
+        """
         scores = []
         criteria = EVALUATION_CRITERIA.get(phase, EVALUATION_CRITERIA["analysis"])
         
         try:
-            # Look for scoring table in content
-            table_pattern = r"\|(.*?)\|(.*?)\|(.*?)\|(.*?)\|(.*?)\|"
-            matches = re.findall(table_pattern, content)
-            
-            for match in matches:
-                if len(match) >= 4:
-                    criterion_text = match[0].strip()
-                    score_text = match[1].strip()
+            # Use the robust, centralized parser from scoring_system
+            raw_scores_dict = create_scores_from_text(content, ScoreType(phase), self.weights)
+
+            # Check if the parser failed and returned all defaults.
+            is_default = all(v == 5.0 for v in raw_scores_dict.values())
+            if not raw_scores_dict or (len(raw_scores_dict) > 1 and is_default):
+                 logger.warning("Could not parse a valid scoring table from LLM output. Using default scores.")
+
+            for criterion, raw_score in raw_scores_dict.items():
+                if criterion in criteria:
+                    weight = getattr(self.weights, criterion, 1.0)
+                    weighted_score = raw_score * weight
+                    red_flag = raw_score < self.red_flag_threshold
                     
-                    # Extract score
-                    score_match = re.search(r"(\d+)", score_text)
-                    if score_match:
-                        raw_score = float(score_match.group(1))
-                        
-                        # Find matching criterion
-                        for criterion in criteria:
-                            if criterion in criterion_text.lower() or criterion.replace("_", " ") in criterion_text.lower():
-                                weight = getattr(self.weights, criterion, 1.0)
-                                weighted_score = raw_score * weight
-                                red_flag = raw_score < self.red_flag_threshold
-                                
-                                scores.append(QualityScore(
-                                    criterion=criterion,
-                                    raw_score=raw_score,
-                                    weight=weight,
-                                    weighted_score=weighted_score,
-                                    red_flag=red_flag,
-                                    reasoning=match[2].strip() if len(match) > 2 else ""
-                                ))
-                                break
+                    scores.append(QualityScore(
+                        criterion=criterion,
+                        raw_score=raw_score,
+                        weight=weight,
+                        weighted_score=weighted_score,
+                        red_flag=red_flag,
+                        reasoning=f"Score parsed from LLM output for {criterion}."
+                    ))
             
-            # If no scores found, create default scores
+            # If after all this, scores is still empty, it's a critical failure.
             if not scores:
-                logger.warning("No quality scores found, creating defaults")
+                logger.error("CRITICAL: Failed to build QualityScore list even after parsing. Falling back to full defaults.")
                 for criterion in criteria:
                     weight = getattr(self.weights, criterion, 1.0)
                     scores.append(QualityScore(
                         criterion=criterion,
-                        raw_score=5.0,  # Default middle score
+                        raw_score=5.0,
                         weight=weight,
                         weighted_score=5.0 * weight,
-                        red_flag=True,  # Flag as questionable
+                        red_flag=True,
                         reasoning="Could not parse from output"
                     ))
-        
+
         except Exception as e:
-            logger.error(f"Error parsing quality scores: {str(e)}")
+            logger.error(f"Error parsing quality scores in SynthesisAssessmentAgent: {str(e)}", exc_info=True)
         
         return scores
     
@@ -551,7 +537,7 @@ Red_Flag = ANY individual score < {self.red_flag_threshold}
         else:
             # Continue with improvements
             next_instructions = self._generate_next_round_instructions(
-                task, quality_scores, red_flags
+                task, quality_scores, red_flags, agent_input
             )
             
             return LoopDecision(
@@ -583,7 +569,8 @@ Red_Flag = ANY individual score < {self.red_flag_threshold}
     def _generate_next_round_instructions(self, 
                                         task: SynthesisTask,
                                         quality_scores: List[QualityScore],
-                                        red_flags: List[QualityScore]) -> Dict[str, Any]:
+                                        red_flags: List[QualityScore],
+                                        agent_input: AgentInput) -> Dict[str, Any]:
         """Tạo hướng dẫn cho vòng tiếp theo"""
         
         instructions = {
