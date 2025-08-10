@@ -29,10 +29,43 @@ Bạn là "Giám đốc dự án" - người điều phối, tổng hợp và đ
 
 # LƯU Ý BẮT BUỘC VỀ OUTPUT
 
-- Phải chứa một BẢNG ĐIỂM MARKDOWN đầy đủ, có các cột: `Tiêu chí | Raw Score | Weight | Weighted | Red Flag`.
-- Bảng điểm phải sử dụng tiêu chí phù hợp với phase hiện tại (Analysis hoặc Ideas) và giá trị `Weight` phản ánh trọng số hiện hành.
-- Nếu thiếu dữ liệu, hãy ước lượng có lý do và GHI RÕ giả định.
-- Không thêm văn bản ngoài JSON/bảng khi có chỉ dẫn yêu cầu định dạng chặt chẽ.
+**BẢNG ĐIỂM BẮT BUỘC** - Phải có format chính xác như sau:
+
+## CHO ANALYSIS PHASE:
+```markdown
+| Tiêu chí | Raw Score | Weight | Weighted | Red Flag |
+|----------|-----------|--------|----------|----------|
+| Tính Logic | 7.5 | 2.0 | 15.0 | ❌ |
+| Tính Toàn diện | 8.0 | 1.8 | 14.4 | ❌ |
+| Tính Nhất quán | 7.0 | 1.5 | 10.5 | ❌ |
+| Bằng chứng | 6.5 | 2.2 | 14.3 | ❌ |
+| Độ sâu | 8.5 | 1.8 | 15.3 | ❌ |
+| **TỔNG** | **7.5** | **9.3** | **69.5** | **0** |
+| **ĐIỂM CUỐI** | **7.47** | | | |
+```
+
+## CHO IDEAS PHASE:
+```markdown
+| Tiêu chí | Raw Score | Weight | Weighted | Red Flag |
+|----------|-----------|--------|----------|----------|
+| Tính Khả thi | 7.0 | 2.0 | 14.0 | ❌ |
+| Tiềm năng Thị trường | 8.5 | 2.5 | 21.25 | ❌ |
+| Tính Sáng tạo | 8.0 | 1.5 | 12.0 | ❌ |
+| Mô hình Kinh doanh | 7.5 | 2.0 | 15.0 | ❌ |
+| Lợi thế Cạnh tranh | 7.0 | 1.8 | 12.6 | ❌ |
+| Rủi ro Kỹ thuật | 6.5 | 1.5 | 9.75 | ❌ |
+| Đầu tư Ban đầu | 8.0 | 1.2 | 9.6 | ❌ |
+| **TỔNG** | **7.5** | **13.5** | **94.2** | **0** |
+| **ĐIỂM CUỐI** | **6.98** | | | |
+```
+
+**QUY TẮC BẮT BUỘC:**
+1. **Raw Score**: Điểm từ 0-10 cho từng tiêu chí
+2. **Weight**: Trọng số cố định theo bảng trên
+3. **Weighted**: Raw Score × Weight
+4. **Red Flag**: ❌ nếu Raw Score < 3.0, ✅ nếu ≥ 3.0
+5. **ĐIỂM CUỐI**: Tổng Weighted ÷ Tổng Weight
+6. **Phải có bảng này trong mọi output**, không được bỏ qua
 
 ## YÊU CẦU BỔ SUNG VỀ ĐA DẠNG Ý TƯỞNG (CHO PHASE IDEAS)
 - Nếu có `DIVERSITY CONTEXT` trong input, hãy cân nhắc yếu tố đa dạng hóa khi tính điểm tổng thể.

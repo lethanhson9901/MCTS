@@ -445,35 +445,80 @@ class ScoringSystem:
 # Helper functions
 def create_scores_from_text(text: str, score_type: ScoreType, weights: AgentWeights) -> Dict[str, float]:
     """
-    Extract scores từ text output của LLM
+    Extract scores từ text output của LLM - hỗ trợ cả format cũ và format bảng mới
     """
     
     import re
+    from backend.config import CRITERIA_NAME_MAPPING
     
     scores = {}
     criteria = EVALUATION_CRITERIA.get(score_type.value, [])
     
-    # Pattern để tìm scores: "criterion_name: X/10" hoặc "criterion_name (X/10)"
-    patterns = [
-        r"(\w+):\s*(\d+(?:\.\d+)?)/10",
-        r"(\w+)\s*\((\d+(?:\.\d+)?)/10\)",
-        r"(\w+).*?(\d+(?:\.\d+)?)\s*/\s*10"
-    ]
+    # TRY NEW TABLE FORMAT FIRST
+    # Pattern để tìm bảng markdown với format mới
+    table_pattern = r"\|.*?Tiêu chí.*?Raw Score.*?Weight.*?Weighted.*?Red Flag.*?\n\|.*?---.*?\n(.*?)\|.*?TỔNG.*?\n"
+    table_match = re.search(table_pattern, text, re.DOTALL | re.IGNORECASE)
     
-    for pattern in patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        for match in matches:
-            criterion_text, score_text = match
-            
-            # Try to match với known criteria
-            for criterion in criteria:
-                if criterion in criterion_text.lower() or criterion.replace("_", " ") in criterion_text.lower():
-                    try:
-                        score = float(score_text)
-                        if 1.0 <= score <= 10.0:
-                            scores[criterion] = score
-                    except ValueError:
-                        continue
+    if table_match:
+        table_content = table_match.group(1)
+        # Parse từng dòng trong bảng
+        lines = table_content.strip().split('\n')
+        
+        for line in lines:
+            if '|' in line and not line.strip().startswith('|--'):
+                parts = [part.strip() for part in line.split('|')]
+                if len(parts) >= 3:
+                    criterion_text = parts[1].strip()
+                    score_text = parts[2].strip()
+                    
+                    # Try to match với known criteria using mapping
+                    criterion_text_lower = criterion_text.lower().strip()
+                    
+                    # Direct mapping từ tên tiếng Việt
+                    if criterion_text_lower in CRITERIA_NAME_MAPPING:
+                        field_name = CRITERIA_NAME_MAPPING[criterion_text_lower]
+                        try:
+                            score = float(score_text)
+                            if 0.0 <= score <= 10.0:
+                                scores[field_name] = score
+                        except ValueError:
+                            continue
+                    else:
+                        # Fallback to old matching logic
+                        for criterion in criteria:
+                            if (criterion in criterion_text_lower or 
+                                criterion.replace("_", " ") in criterion_text_lower or
+                                criterion.replace("_", "") in criterion_text_lower):
+                                try:
+                                    score = float(score_text)
+                                    if 0.0 <= score <= 10.0:
+                                        scores[criterion] = score
+                                        break
+                                except ValueError:
+                                    continue
+    
+    # FALLBACK TO OLD PATTERNS if no table found
+    if not scores:
+        patterns = [
+            r"(\w+):\s*(\d+(?:\.\d+)?)/10",
+            r"(\w+)\s*\((\d+(?:\.\d+)?)/10\)",
+            r"(\w+).*?(\d+(?:\.\d+)?)\s*/\s*10"
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                criterion_text, score_text = match
+                
+                # Try to match với known criteria
+                for criterion in criteria:
+                    if criterion in criterion_text.lower() or criterion.replace("_", " ") in criterion_text.lower():
+                        try:
+                            score = float(score_text)
+                            if 1.0 <= score <= 10.0:
+                                scores[criterion] = score
+                        except ValueError:
+                            continue
     
     # Fill missing criteria với default scores
     for criterion in criteria:

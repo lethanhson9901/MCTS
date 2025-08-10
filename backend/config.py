@@ -101,5 +101,24 @@ EVALUATION_CRITERIA = {
     ]
 }
 
+# Mapping giữa tên tiếng Việt và field names
+CRITERIA_NAME_MAPPING = {
+    # Analysis criteria
+    "tính logic": "tinh_logic",
+    "tính toàn diện": "toan_dien", 
+    "tính nhất quán": "nhat_quan",
+    "bằng chứng": "bang_chung",
+    "độ sâu": "do_sau",
+    
+    # Ideas criteria
+    "tính khả thi": "tinh_kha_thi",
+    "tiềm năng thị trường": "tiem_nang_thi_truong",
+    "tính sáng tạo": "tinh_sang_tao", 
+    "mô hình kinh doanh": "mo_hinh_kinh_doanh",
+    "lợi thế cạnh tranh": "loi_the_canh_tranh",
+    "rủi ro kỹ thuật": "rui_ro_ky_thuat",
+    "đầu tư ban đầu": "dau_tu_ban_dau"
+}
+
 # Prompt templates directory
 PROMPTS_DIR = "prompts"
